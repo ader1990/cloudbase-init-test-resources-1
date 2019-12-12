@@ -1,18 +1,22 @@
 ## template: jinja
 #cloud-config
-write_files:
-    -
-        encoding: b64
-        content: CiMgVGhpcyBmaWxlIGNvbnRyb2xzIHRoZSBzdGF0ZSBvZiBTRUxpbnV4
-        path: 'C:\test_file'
-        permissions: '0644'
-    -
-        content: "# Example ps1 file\necho 'test'\n"
-        path: 'C:\test_append.ps1'
-        permissions: '0644'
-    -
-        content: "added to file\n {{ v1.local_hostname }} {{ v1.instance_id }} {{ ds.meta_data.local_hostname }} {{ ds.meta_data.hostname }}"
-        path: 'C:\test_append.ps1'
-        permissions: '0644'
-        append: true
 
+write_files:
+-   path: 'C:\test_append.ps1'
+    owner: root:root
+    permissions: '0640'
+    content: |
+      ---
+      apiVersion: kubeadm.k8s.io/v1beta1
+      discovery:
+        bootstrapToken:
+          apiServerEndpoint: capi-quickstart-apiserver-748134055.us-east-1.elb.amazonaws.com:6443
+          caCertHashes:
+          - sha256:1234
+          token: some_token
+          unsafeSkipCAVerification: false
+      kind: JoinConfiguration
+      nodeRegistration:
+        kubeletExtraArgs:
+          cloud-provider: aws
+        name: '{{ ds.meta_data.hostname }}'
