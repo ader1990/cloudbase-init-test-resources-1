@@ -1,40 +1,63 @@
-#cloud-config
-groups:
-    -
-        windows:
-            - Admin
-    - cloud-users
+#ps1
+# Copyright 2019 Cloudbase Solutions Srl
 
-users:
-    -
-        name: cloud-config-user
-        gecos: 'Created by cloudbase-init'
-        primary_group: cloud-users
-        groups: windows
+$ErrorActionPreference = "Stop"
 
-write_files:
-    -
-        encoding: b64
-        content: CiMgVGhpcyBmaWxlIGNvbnRyb2xzIHRoZSBzdGF0ZSBvZiBTRUxpbnV4
-        path: 'C:\test_file'
-        permissions: '0644'
-    -
-        content: "# Example ps1 file\necho 'test'\n"
-        path: 'C:\test_append.ps1'
-        permissions: '0644'
-    -
-        content: "added to file\n"
-        path: 'C:\test_append.ps1'
-        permissions: '0644'
-        append: true
-runcmd:
-    -
-        - dir
-        - 'c:\'
-    - 'mkdir c:\runcmd'
-ntp:
-    enabled: true
-    pools:
-        - 1.pool.ntp.org
-    servers:
-        - 0.pool.ntp.org
+function Install-QemuGA {
+    param(
+        [string]$qemuGaMsiUrl,
+        [string]$qemuGaMsiSha1
+    )
+
+    $qemuGaMsiPath = Join-Path $env:TEMP "qemu-ga.msi"
+    $qemuGaMsiLog = Join-Path $env:TEMP "qemu-ga.log"
+
+    Write-Host "Downloading Qemu Guest Agent: $qemuGaMsiUrl"
+    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+    (New-Object System.Net.WebClient).DownloadFile($qemuGaMsiUrl, $qemuGaMsiPath)
+    if (!(Test-Path $qemuGaMsiPath)) {
+        throw "Failed to download file: $qemuGaMsiUrl"
+    }
+
+    $sha1Hash = (Get-FileHash -Algorithm "SHA1" $qemuGaMsiPath).Hash
+
+    if ($sha1Hash -ne $qemuGaMsiSha1) {
+        throw "Failed to download correct file. Expected hash ${qemuGaMsiSha1}, but got ${sha1Hash}"
+    }
+
+    Write-Host "Installing Qemu Guest Agent: $qemuGaMsiPath"
+    $params = '-i "{0}" /qn /log "{1}"' -f @($qemuGaMsiPath, $qemuGaMsiLog)
+    Write-Host "$params"
+    $exitCode = (Start-Process -FilePath msiexec.exe -ArgumentList $params -Wait -Passthru).ExitCode
+    if ($exitCode) {
+        throw "Failed to install Qemu Guest Agent. Exit code: ${exitCode}"
+    } else {
+        Write-Host "Qemu Guest Agent was installed successfully."
+    }
+
+    $qemuServices = Get-Service "*qemu*"
+
+    if ($qemuServices.Count -ne 2) {
+        throw "Failed to find both Qemu Guest Agent services"
+    }
+    $guestAgentService = $qemuServices | Where-Object {$_.Name -eq "QEMU-GA"}
+    $guestAgentVssService = $qemuServices | Where-Object {$_.Name -eq "QEMU Guest Agent VSS Provider"}
+    if (!$guestAgentService -or !$guestAgentVssService) {
+        throw "Failed to find GA and VSS services"
+    }
+    if ($guestAgentService.Status -ne "Running") {
+        throw "Qemu Guest Agent is not running"
+    }
+    $guestAgentVssService | Restart-Service
+}
+
+$arch = "x86"
+$qemuGaMsiSha1 = "7F298036D0445DC32601E8416BC59E623639D282"
+
+if ($env:PROCESSOR_ARCHITECTURE -eq "AMD64") {
+    $arch = "x64"
+    $qemuGaMsiSha1 = "50CB4A3840665D4FFDFF1C0D27A14074165FC501"
+}
+$qemuGaMsiUrl = "https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/archive-qemu-ga/qemu-ga-win-100.0.0.0-3.el7ev/qemu-ga-{0}.msi" -f $arch
+
+Install-QemuGA $qemuGaMsiUrl $qemuGaMsiSha1
