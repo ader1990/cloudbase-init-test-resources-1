@@ -3,6 +3,38 @@
 
 $ErrorActionPreference = "Stop"
 
+function Execute-Retry {
+    Param(
+        [parameter(Mandatory=$true)]
+        $command,
+        [int]$maxRetryCount=4,
+        [int]$retryInterval=4
+    )
+
+    $currErrorActionPreference = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+
+    $retryCount = 0
+    while ($true) {
+        try {
+            $res = Invoke-Command -ScriptBlock $command
+            $ErrorActionPreference = $currErrorActionPreference
+            return $res
+        } catch [System.Exception] {
+            $retryCount++
+            if ($retryCount -ge $maxRetryCount) {
+                $ErrorActionPreference = $currErrorActionPreference
+                throw
+            } else {
+                if($_) {
+                    Write-Warning $_
+                }
+                Start-Sleep $retryInterval
+            }
+        }
+    }
+}
+
 function Install-QemuGA {
     param(
         [string]$qemuGaMsiUrl,
@@ -14,7 +46,9 @@ function Install-QemuGA {
 
     Write-Host "Downloading Qemu Guest Agent: $qemuGaMsiUrl"
     [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-    (New-Object System.Net.WebClient).DownloadFile($qemuGaMsiUrl, $qemuGaMsiPath)
+    Execute-Retry {
+        (New-Object System.Net.WebClient).DownloadFile($qemuGaMsiUrl, $qemuGaMsiPath)
+    }
     if (!(Test-Path $qemuGaMsiPath)) {
         throw "Failed to download file: $qemuGaMsiUrl"
     }
@@ -35,20 +69,22 @@ function Install-QemuGA {
         Write-Host "Qemu Guest Agent was installed successfully."
     }
 
-    $qemuServices = Get-Service "*qemu*"
+    Execute-Retry {
+        $qemuServices = Get-Service "*qemu*"
 
-    if ($qemuServices.Count -ne 2) {
-        throw "Failed to find both Qemu Guest Agent services"
+        if ($qemuServices.Count -ne 2) {
+            throw "Failed to find both Qemu Guest Agent services"
+        }
+        $guestAgentService = $qemuServices | Where-Object {$_.Name -eq "QEMU-GA"}
+        $guestAgentVssService = $qemuServices | Where-Object {$_.Name -eq "QEMU Guest Agent VSS Provider"}
+        if (!$guestAgentService -or !$guestAgentVssService) {
+            throw "Failed to find GA and VSS services"
+        }
+        if ($guestAgentService.Status -ne "Running") {
+            throw "Qemu Guest Agent is not running"
+        }
+        $guestAgentVssService | Restart-Service
     }
-    $guestAgentService = $qemuServices | Where-Object {$_.Name -eq "QEMU-GA"}
-    $guestAgentVssService = $qemuServices | Where-Object {$_.Name -eq "QEMU Guest Agent VSS Provider"}
-    if (!$guestAgentService -or !$guestAgentVssService) {
-        throw "Failed to find GA and VSS services"
-    }
-    if ($guestAgentService.Status -ne "Running") {
-        throw "Qemu Guest Agent is not running"
-    }
-    $guestAgentVssService | Restart-Service
 }
 
 $arch = "x86"
