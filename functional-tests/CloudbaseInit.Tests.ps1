@@ -10,15 +10,24 @@ $cloudbaseInitRegistryPath = "HKLM:\SOFTWARE\Cloudbase Solutions\Cloudbase-Init"
 function before.cloudbaseinit.plugins.common.mtu.MTUPlugin {
     "NOOP" | Should -Be "NOOP"
 }
+
 function after.cloudbaseinit.plugins.common.mtu.MTUPlugin {
     "NOOP" | Should -Be "NOOP"
 }
+
+
 function before.cloudbaseinit.plugins.windows.ntpclient.NTPClientPlugin {
-    { Get-Service "w32time" -ErrorAction Stop } | Should -Not -Throw
+    It "w32time service should exist" {
+        { Get-Service "w32time" -ErrorAction Stop } | Should -Not -Throw
+    }
 }
 function after.cloudbaseinit.plugins.windows.ntpclient.NTPClientPlugin {
-    { Get-Service "w32time" -ErrorAction Stop } | Should -Not -Throw
+    It "w32time service should be running" {
+        $status = (Get-Service "w32time" -ErrorAction Stop).Status
+        $status | Should -Be "Running"
+    }
 }
+
 function before.cloudbaseinit.plugins.windows.sanpolicy.SANPolicyPlugin {
     "True" | Should -Be "True"
 }
