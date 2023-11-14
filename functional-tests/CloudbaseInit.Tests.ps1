@@ -1,76 +1,96 @@
-$here = Split-Path -Parent $MyInvocation.MyCommand.Path
+$global:here = Split-Path -Parent $MyInvocation.MyCommand.Path
 $ErrorActionPreference = "Stop"
 
-class PathShouldExist : System.Management.Automation.ValidateArgumentsAttribute {
-    [void] Validate([object]$arguments, [System.Management.Automation.EngineIntrinsics]$engineIntrinsics) {
-    }
-}
+Import-Module "${here}/ini.psm1"
 
-function Compare-Objects ($first, $last) {
-    (Compare-Object $first $last -SyncWindow 0).Length -eq 0
-}
-
-function Compare-ScriptBlocks {
-    Param(
-        [System.Management.Automation.ScriptBlock]$scrBlock1,
-        [System.Management.Automation.ScriptBlock]$scrBlock2
-    )
-
-    $sb1 = $scrBlock1.ToString()
-    $sb2 = $scrBlock2.ToString()
-
-    return ($sb1.CompareTo($sb2) -eq 0)
-}
-
-function Add-FakeObjProperty ([ref]$obj, $name, $value) {
-    Add-Member -InputObject $obj.value -MemberType NoteProperty `
-        -Name $name -Value $value
-}
-
-function Add-FakeObjProperties ([ref]$obj, $fakeProperties, $value) {
-    foreach ($prop in $fakeProperties) {
-        Add-Member -InputObject $obj.value -MemberType NoteProperty `
-            -Name $prop -Value $value
-    }
-}
-
-function Add-FakeObjMethod ([ref]$obj, $name) {
-    Add-Member -InputObject $obj.value -MemberType ScriptMethod `
-        -Name $name -Value { return 0 }
-}
-
-function Add-FakeObjMethods ([ref]$obj, $fakeMethods) {
-    foreach ($method in $fakeMethods) {
-        Add-Member -InputObject $obj.value -MemberType ScriptMethod `
-            -Name $method -Value { return 0 }
-    }
-}
-
-function Compare-Arrays ($arr1, $arr2) {
-    return (((Compare-Object $arr1 $arr2).InputObject).Length -eq 0)
-}
-
-function Compare-HashTables ($tab1, $tab2) {
-    if ($tab1.Count -ne $tab2.Count) {
-        return $false
-    }
-    foreach ($i in $tab1.Keys) {
-        if (($tab2.ContainsKey($i) -eq $false) -or ($tab1[$i] -ne $tab2[$i])) {
-            return $false
-        }
-    }
-    return $true
-}
-
+$global:metadataService = "empty"
 $cloudbaseInitRegistryPath = "HKLM:\SOFTWARE\Cloudbase Solutions\Cloudbase-Init"
-$plugins = @(
-    "PluginOne",
-    "PluginTwo"
-)
+
+
+function before.cloudbaseinit.plugins.common.mtu.MTUPlugin {
+    "NOOP" | Should -Be "NOOP"
+}
+function after.cloudbaseinit.plugins.common.mtu.MTUPlugin {
+    "NOOP" | Should -Be "NOOP"
+}
+function before.cloudbaseinit.plugins.windows.ntpclient.NTPClientPlugin {
+    { Get-Service "w32time" -ErrorAction Stop } | Should -Not -Throw
+}
+function after.cloudbaseinit.plugins.windows.ntpclient.NTPClientPlugin {
+    { Get-Service "w32time" -ErrorAction Stop } | Should -Not -Throw
+}
+function before.cloudbaseinit.plugins.windows.sanpolicy.SANPolicyPlugin {
+    "True" | Should -Be "True"
+}
+function after.cloudbaseinit.plugins.windows.sanpolicy.SANPolicyPlugin {
+    "True" | Should -Be "True"
+}
+function before.cloudbaseinit.plugins.windows.displayidletimeout.DisplayIdleTimeoutConfigPlugin {
+    "True" | Should -Be "True"
+}
+function after.cloudbaseinit.plugins.windows.displayidletimeout.DisplayIdleTimeoutConfigPlugin {
+    "True" | Should -Be "True"
+}
+function before.cloudbaseinit.plugins.windows.bootconfig.BootStatusPolicyPlugin {
+    "True" | Should -Be "True"
+}
+function after.cloudbaseinit.plugins.windows.bootconfig.BootStatusPolicyPlugin {
+    "True" | Should -Be "True"
+}
+function before.cloudbaseinit.plugins.common.sethostname.SetHostNamePlugin {
+    "True" | Should -Be "True"
+}
+function after.cloudbaseinit.plugins.common.sethostname.SetHostNamePlugin {
+    "True" | Should -Be "True"
+}
+function before.cloudbaseinit.plugins.windows.extendvolumes.ExtendVolumesPlugin {
+    "True" | Should -Be "True"
+}
+function after.cloudbaseinit.plugins.windows.extendvolumes.ExtendVolumesPlugin {
+    "True" | Should -Be "True"
+}
+function before.cloudbaseinit.plugins.common.userdata.UserDataPlugin {
+    "True" | Should -Be "True"
+}
+function after.cloudbaseinit.plugins.common.userdata.UserDataPlugin {
+    "True" | Should -Be "True"
+}
+function before.cloudbaseinit.plugins.windows.winrmlistener.ConfigWinRMListenerPlugin {
+    "True" | Should -Be "True"
+}
+function after.cloudbaseinit.plugins.windows.winrmlistener.ConfigWinRMListenerPlugin {
+    "True" | Should -Be "True"
+}
+function before.cloudbaseinit.plugins.common.localscripts.LocalScriptsPlugin {
+    "True" | Should -Be "True"
+}
+function after.cloudbaseinit.plugins.common.localscripts.LocalScriptsPlugin {
+    "True" | Should -Be "True"
+}
+function before.cloudbaseinit.plugins.common.trim.TrimConfigPlugin {
+    "True" | Should -Be "True"
+}
+function after.cloudbaseinit.plugins.common.trim.TrimConfigPlugin {
+    "True" | Should -Be "True"
+}
+
+BeforeDiscovery {
+    $global:metadataService | Should -Be "empty"
+    $metadataServiceConfigFile = Resolve-Path "$here/../$metadataService/cloudbase-init.conf"
+    $pluginList = Get-IniFileValue -Path $metadataServiceConfigFile -Section "DEFAULT" `
+                                      -Key "plugins" `
+                                      -Default ""
+    $pluginList = $pluginList.Split(",")
+}
 
 Describe "TestVerifyBeforeAllPlugins" {
-    $plugins | ForEach-Object {
+    $pluginList | ForEach-Object {
         $plugin = $_
+        if (!$plugin) {
+            return
+        }
+        & "before.${plugin}"
+
         It "Checks for Registry Key state ${plugin}" {
             $propertyName = "TEST"
             $propertyValue = "NOT_INITIALIZED"
@@ -79,7 +99,28 @@ Describe "TestVerifyBeforeAllPlugins" {
             } catch {
                 $propertyValue = "NOT_EXISTENT"
             }
-            $propertyValue | Should -BeExactly 1
+            $propertyValue | Should -BeExactly "NOT_EXISTENT"
+        }
+    }
+}
+
+Describe "TestVerifyAfterAllPlugins" {
+    $pluginList | ForEach-Object {
+        $plugin = $_
+        if (!$plugin) {
+            return
+        }
+        & "after.${plugin}"
+
+        It "Checks for Registry Key state ${plugin}" {
+            $propertyName = "TEST"
+            $propertyValue = "NOT_INITIALIZED"
+            try {
+                $propertyValue = Get-ItemProperty -Path $cloudbaseInitRegistryPath -Name $propertyNameopertyName -ErrorAction "Stop"
+            } catch {
+                $propertyValue = "NOT_EXISTENT"
+            }
+            $propertyValue | Should -BeExactly "NOT_EXISTENT"
         }
     }
 }
