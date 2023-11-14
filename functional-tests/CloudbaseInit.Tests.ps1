@@ -29,11 +29,18 @@ function after.cloudbaseinit.plugins.windows.ntpclient.NTPClientPlugin {
 }
 
 function before.cloudbaseinit.plugins.windows.sanpolicy.SANPolicyPlugin {
-
+    It "Get-StorageSetting should return" {
+        { (Get-StorageSetting).NewDiskPolicy } | Should -Not -Throw
+    }
 }
+
 function after.cloudbaseinit.plugins.windows.sanpolicy.SANPolicyPlugin {
-
+    It "Get-StorageSetting should be OnlineAll" {
+        $sanPolicy = (Get-StorageSetting).NewDiskPolicy
+        $sanPolicy | Should -Be "OnlineAll"
+    }
 }
+
 function before.cloudbaseinit.plugins.windows.displayidletimeout.DisplayIdleTimeoutConfigPlugin {
 
 }
