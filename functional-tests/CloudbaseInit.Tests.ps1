@@ -8,11 +8,10 @@ $cloudbaseInitRegistryPath = "HKLM:\SOFTWARE\Cloudbase Solutions\Cloudbase-Init"
 
 
 function before.cloudbaseinit.plugins.common.mtu.MTUPlugin {
-
+    # NOOP
 }
-
 function after.cloudbaseinit.plugins.common.mtu.MTUPlugin {
-
+    # NOOP
 }
 
 
@@ -42,17 +41,36 @@ function after.cloudbaseinit.plugins.windows.sanpolicy.SANPolicyPlugin {
 }
 
 function before.cloudbaseinit.plugins.windows.displayidletimeout.DisplayIdleTimeoutConfigPlugin {
-
+    It "powercfg returns SUB_VIDEO VIDEOIDLE" {
+        $powerCfgOut = $(cmd /c 'powercfg /query SCHEME_CURRENT SUB_VIDEO VIDEOIDLE') `
+            | Select-String -Pattern "Current AC Power Setting Index:"
+        $powerCfgOut.Matches.Count | Should -Be 1
+    }
 }
 function after.cloudbaseinit.plugins.windows.displayidletimeout.DisplayIdleTimeoutConfigPlugin {
-
+    It "powercfg returns SUB_VIDEO VIDEOIDLE 0" {
+        $powerCfgOut = $(cmd /c 'powercfg /query SCHEME_CURRENT SUB_VIDEO VIDEOIDLE') `
+            | Select-String -Pattern "Current AC Power Setting Index: 0x00000000"
+        $powerCfgOut.Matches.Count | Should -Be 1
+    }
 }
+
 function before.cloudbaseinit.plugins.windows.bootconfig.BootStatusPolicyPlugin {
+     It "bcdedit returns base identifier" {
+        $bcdOut = $(cmd /c 'bcdedit /enum {current}') `
+            | Select-String -Pattern "identifier"
+        $bcdOut.Matches.Count | Should -Be 1
+     }
 
 }
 function after.cloudbaseinit.plugins.windows.bootconfig.BootStatusPolicyPlugin {
-
+     It "bcdedit returns ignoreallfailures" {
+        $bcdOut = $(cmd /c 'bcdedit /enum {current}') `
+            | Select-String -Pattern "ignoreallfailures"
+        $bcdOut.Matches.Count | Should -Be 1
+     }
 }
+
 function before.cloudbaseinit.plugins.common.sethostname.SetHostNamePlugin {
 
 }
